@@ -1,0 +1,36 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Description: Create ACM Certificate
+
+Parameters:
+  Environment:
+    Description: Hosted zone environment - test or prod
+    Type: String
+    Default: test
+    AllowedValues:
+      - test
+      - prod
+  DomainName:
+    Description: The domain name
+    Type: String
+    Default: test.jtan23.net
+    AllowedValues:
+      - test.jtan23.net
+      - jtan23.net
+
+Resources:
+  Certificate:
+    Type: AWS::CertificateManager::Certificate
+    Properties:
+      DomainName:
+        Fn::Sub: "*.${DomainName}"
+      SubjectAlternativeNames:
+        - Fn::Sub: ${DomainName}
+      Tags:
+        - Key: Environment
+          Value:
+            Ref: Environment
+        - Key: Name
+          Value:
+            Ref: DomainName
+      ValidationMethod: DNS

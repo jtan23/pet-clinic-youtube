@@ -1,0 +1,18 @@
+<!doctype html>
+<html th:replace="~{fragments/layout :: layout(~{::body})}">
+<body>
+<h2>Find Owners</h2>
+<form th:action="@{/owners}" th:object="${owner}" method="get">
+    <div><label>Last Name</label></div>
+    <div><input th:field="*{lastName}"></div>
+    <div th:if="${#fields.hasErrors()}">
+        <p th:each="error : ${#fields.allErrors()}" th:text="${error}" class="error"></p>
+    </div>
+    <br>
+    <div>
+        <button type="submit">Find Owner</button>
+        <a sec:authorize="hasRole('ADMIN')" th:href="@{/owners/new}">Add Owner</a>
+    </div>
+</form>
+</body>
+</html>

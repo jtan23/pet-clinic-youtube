@@ -1,0 +1,435 @@
+Description: >-
+  Build a test environment for testing AWS Lambda to initilase a MySQL database.
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: VPC
+        Parameters:
+          - VpcCIDR
+          - PublicSubnetCIDR1
+          - PublicSubnetCIDR2
+          - PublicSubnetCIDR3
+      - Label:
+          default: Database
+        Parameters:
+          - DBInstanceClass
+          - DBEngineVersion
+          - DBUser
+          - DBPassword
+          - DBName
+      - Label:
+          default: Custom Resource
+        Parameters:
+          - SqlSchemeParameter
+          - SqlDataParameter
+          - LambdaCodeS3Bucket
+          - LambdaCodeS3Key
+
+Parameters:
+  VpcCIDR:
+    Description: Please enter the IP range (CIDR notation) for this VPC
+    Type: String
+    Default: 10.0.0.0/16
+  PublicSubnetCIDR1:
+    Description: Please enter the IP range (CIDR notation) for the public subnet 1 in the first Availability Zone
+    Type: String
+    Default: 10.0.0.0/24
+  PublicSubnetCIDR2:
+    Description: Please enter the IP range (CIDR notation) for the public subnet 2 in the second Availability Zone
+    Type: String
+    Default: 10.0.1.0/24
+  PublicSubnetCIDR3:
+    Description: Please enter the IP range (CIDR notation) for the public subnet 3 in the third Availability Zone
+    Type: String
+    Default: 10.0.3.0/24
+
+  DBInstanceClass:
+    Description: The database instance type
+    Type: String
+    Default: db.t3.medium
+  DBEngineVersion:
+    Description: The database engine Version
+    Type: String
+    Default: 8.0.mysql_aurora.3.04.0
+  DBUser:
+    Description: The database admin account username
+    Type: String
+    Default: petclinic
+  DBPassword:
+    NoEcho: true
+    Description: The database admin account password
+    Type: String
+    Default: petclinic
+  DBName:
+    Description: Name of the default database
+    Type: String
+    Default: petclinic
+
+  SqlSchemeParameter:
+    Description: Name of the SQL Scheme Parameter
+    Type: String
+    Default: pet-clinic-mysql-scheme
+  SqlDataParameter:
+    Description: Name of the SQL Data Parameter
+    Type: String
+    Default: pet-clinic-mysql-data
+  LambdaCodeS3Bucket:
+    Description: Bucket name of the Lambda code
+    Type: String
+    Default: jtan23-petclinic
+  LambdaCodeS3Key:
+    Description: Lambda code jar file name
+    Type: String
+    Default: dbinit-1.0.0.jar
+
+Resources:
+  # We need a VPC to run our test environment
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCIDR
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-vpc
+
+  # InternetGateway in case we need to inspect the resources created by AWS
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-igw
+
+  # Attach InternetGateway to VPC
+  InternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref VPC
+
+  # Public Subnet 1 in Availability Zone a
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      CidrBlock: !Ref PublicSubnetCIDR1
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-public-subnet-1
+
+  # Public Subnet 2 in Availability Zone b
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 1, !GetAZs '' ]
+      CidrBlock: !Ref PublicSubnetCIDR2
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-public-subnet-2
+
+  # Public Subnet 3 in Availability Zone c
+  PublicSubnet3:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 2, !GetAZs '' ]
+      CidrBlock: !Ref PublicSubnetCIDR3
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-public-subnet-3
+
+  # A Routing table for our VPC
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-public-rt
+
+  # Associate our routing table to our InternetGateway, so that internet traffic can go to our routing table
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  # Associate public subnet 1 with our routing table, so that the internet traffic can go to our public subnet 1
+  PublicSubnetRouteTableAssociation1:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet1
+
+  # Associate public subnet 2 with our routing table, so that the internet traffic can go to our public subnet 2
+  PublicSubnetRouteTableAssociation2:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet2
+
+  # Associate public subnet 3 with our routing table, so that the internet traffic can go to our public subnet 3
+  PublicSubnetRouteTableAssociation3:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet3
+
+  # Security Group for MySQL database and Parameter Store accesses
+  DBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow only 443 and 3306 inbound traffic
+      VpcId: !Ref VPC
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic by default
+          IpProtocol: "-1"
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-db-sg
+
+  # MySQL database access
+  MySQLIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      CidrIp: 0.0.0.0/0
+      IpProtocol: tcp
+      FromPort: 3306
+      ToPort: 3306
+      GroupId: !GetAtt DBSecurityGroup.GroupId
+
+  # Parameter store access
+  HttpsIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      CidrIp: 0.0.0.0/0
+      IpProtocol: tcp
+      FromPort: 443
+      ToPort: 443
+      GroupId: !GetAtt DBSecurityGroup.GroupId
+
+  # Subnet Group for RDS cluster
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Subnets the database can be created in
+      SubnetIds:
+        - !Ref PublicSubnet1
+        - !Ref PublicSubnet2
+        - !Ref PublicSubnet3
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-db-subnet-group
+
+  # RDS Cluster definition
+  RDSCluster:
+    Type: AWS::RDS::DBCluster
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      Engine: aurora-mysql
+      EngineMode: provisioned
+      EngineVersion: !Ref DBEngineVersion
+      EnableCloudwatchLogsExports: [error, general, slowquery]
+      VpcSecurityGroupIds:
+        - !Ref DBSecurityGroup
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      MasterUsername: !Ref DBUser
+      MasterUserPassword: !Ref DBPassword
+      DatabaseName: !Ref DBName
+      Port: 3306
+      CopyTagsToSnapshot: true
+      DBClusterIdentifier: !Sub ${AWS::StackName}-mysql-cluster
+      BackupRetentionPeriod: 1
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-mysql-cluster
+
+  # RDS DB Instance definition
+  RDSDBInstance:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      Engine: aurora-mysql
+      DBInstanceClass: !Ref DBInstanceClass
+      DBClusterIdentifier: !Ref RDSCluster
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      PubliclyAccessible: false
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-mysql-instance
+
+  # Store RDS Cluster endpoint address in Parameter Store, so that other services can find the database
+  DBClusterEndpoint:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: pet-clinic-mysql-endpoint
+      Type: String
+      Value: !GetAtt RDSCluster.Endpoint.Address
+      Description: MySQL writer host name
+
+  # Store SQL Schema in Parameter Store, so that our Lambda Function can load it
+  SQLSchemeParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub ${AWS::StackName}-${SqlSchemeParameter}
+      Type: String
+      Value: |
+        DROP TABLE IF EXISTS vet_specialties;
+        DROP TABLE IF EXISTS specialties;
+        DROP TABLE IF EXISTS vets;
+        DROP TABLE IF EXISTS visits;
+        DROP TABLE IF EXISTS pets;
+        DROP TABLE IF EXISTS pet_types;
+        DROP TABLE IF EXISTS owners;
+        CREATE TABLE vets (id INT(4) UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, first_name VARCHAR(30), last_name VARCHAR(30), INDEX(last_name));
+        CREATE TABLE specialties (id INT(4) UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, name VARCHAR(80), INDEX(name));
+        CREATE TABLE vet_specialties (vet_id INT(4) UNSIGNED NOT NULL, specialty_id INT(4) UNSIGNED NOT NULL, FOREIGN KEY (vet_id) REFERENCES vets(id), FOREIGN KEY (specialty_id) REFERENCES specialties(id), UNIQUE (vet_id,specialty_id));
+        CREATE TABLE pet_types (id INT(4) UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, name VARCHAR(80), INDEX(name));
+        CREATE TABLE owners (id INT(4) UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, first_name VARCHAR(30), last_name VARCHAR(30), address VARCHAR(255), city VARCHAR(80), telephone VARCHAR(20), INDEX(last_name));
+        CREATE TABLE pets (id INT(4) UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, name VARCHAR(30), birth_date DATE, pet_type_id INT(4) UNSIGNED NOT NULL, owner_id INT(4) UNSIGNED, INDEX(name), FOREIGN KEY (owner_id) REFERENCES owners(id), FOREIGN KEY (pet_type_id) REFERENCES pet_types(id));
+        CREATE TABLE visits (id INT(4) UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, pet_id INT(4) UNSIGNED, visit_date DATE, description VARCHAR(255), FOREIGN KEY (pet_id) REFERENCES pets(id));
+
+  # Store SQL data in Parameter Store, so that our Lambda Function can load it
+  SQLDataParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub ${AWS::StackName}-${SqlDataParameter}
+      Type: String
+      Value: |
+        INSERT INTO vets VALUES (1, 'James', 'Carter');
+        INSERT INTO vets VALUES (2, 'Helen', 'Leary');
+        INSERT INTO vets VALUES (3, 'Linda', 'Douglas');
+        INSERT INTO vets VALUES (4, 'Rafael', 'Ortega');
+        INSERT INTO vets VALUES (5, 'Henry', 'Stevens');
+        INSERT INTO vets VALUES (6, 'Sharon', 'Jenkins');
+        INSERT INTO specialties VALUES (1, 'radiology');
+        INSERT INTO specialties VALUES (2, 'surgery');
+        INSERT INTO specialties VALUES (3, 'dentistry');
+        INSERT INTO vet_specialties VALUES (2, 1);
+        INSERT INTO vet_specialties VALUES (3, 2);
+        INSERT INTO vet_specialties VALUES (3, 3);
+        INSERT INTO vet_specialties VALUES (4, 2);
+        INSERT INTO vet_specialties VALUES (5, 1);
+        INSERT INTO pet_types VALUES (1, 'Cat');
+        INSERT INTO pet_types VALUES (2, 'Dog');
+        INSERT INTO pet_types VALUES (3, 'Lizard');
+        INSERT INTO pet_types VALUES (4, 'Snake');
+        INSERT INTO pet_types VALUES (5, 'Bird');
+        INSERT INTO pet_types VALUES (6, 'Hamster');
+        INSERT INTO owners VALUES (1, 'George', 'Franklin', '110 W. Liberty St.', 'Madison', '6085551023');
+        INSERT INTO owners VALUES (2, 'Betty', 'Davis', '638 Cardinal Ave.', 'Sun Prairie', '6085551749');
+        INSERT INTO owners VALUES (3, 'Eduardo', 'Rodriquez', '2693 Commerce St.', 'McFarland', '6085558763');
+        INSERT INTO owners VALUES (4, 'Harold', 'Davis', '563 Friendly St.', 'Windsor', '6085553198');
+        INSERT INTO owners VALUES (5, 'Peter', 'McTavish', '2387 S. Fair Way', 'Madison', '6085552765');
+        INSERT INTO owners VALUES (6, 'Jean', 'Coleman', '105 N. Lake St.', 'Monona', '6085552654');
+        INSERT INTO owners VALUES (7, 'Jeff', 'Black', '1450 Oak Blvd.', 'Monona', '6085555387');
+        INSERT INTO owners VALUES (8, 'Maria', 'Escobito', '345 Maple St.', 'Madison', '6085557683');
+        INSERT INTO owners VALUES (9, 'David', 'Schroeder', '2749 Blackhawk Trail', 'Madison', '6085559435');
+        INSERT INTO owners VALUES (10, 'Carlos', 'Estaban', '2335 Independence La.', 'Waunakee', '6085555487');
+        INSERT INTO pets VALUES (1, 'Leo', '2000-09-07', 1, 1);
+        INSERT INTO pets VALUES (2, 'Basil', '2002-08-06', 6, 2);
+        INSERT INTO pets VALUES (3, 'Rosy', '2001-04-17', 2, 3);
+        INSERT INTO pets VALUES (4, 'Jewel', '2000-03-07', 2, 3);
+        INSERT INTO pets VALUES (5, 'Iggy', '2000-11-30', 3, 4);
+        INSERT INTO pets VALUES (6, 'George', '2000-01-20', 4, 5);
+        INSERT INTO pets VALUES (7, 'Samantha', '1995-09-04', 1, 6);
+        INSERT INTO pets VALUES (8, 'Max', '1995-09-04', 1, 6);
+        INSERT INTO pets VALUES (9, 'Lucky', '1999-08-06', 5, 7);
+        INSERT INTO pets VALUES (10, 'Mulligan', '1997-02-24', 2, 8);
+        INSERT INTO pets VALUES (11, 'Freddy', '2000-03-09', 5, 9);
+        INSERT INTO pets VALUES (12, 'Lucky', '2000-06-24', 2, 10);
+        INSERT INTO pets VALUES (13, 'Sly', '2002-06-08', 1, 10);
+        INSERT INTO visits VALUES (1, 7, '2010-03-04', 'Rabies shot');
+        INSERT INTO visits VALUES (2, 8, '2011-03-04', 'Rabies shot');
+        INSERT INTO visits VALUES (3, 8, '2009-06-04', 'Neutered');
+        INSERT INTO visits VALUES (4, 7, '2008-09-04', 'Spayed');
+
+  # Create a VPC Endpoint for S3 service, so that our Lambda Function can load the code from S3
+  S3Endpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      RouteTableIds:
+        - !Ref PublicRouteTable
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.s3
+      VpcId: !Ref VPC
+
+  # Create a VPC Interface for SSM service, so that our Lambda Function can load Parameters from Parameter Store
+  SSMEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      PrivateDnsEnabled: true
+      SecurityGroupIds:
+        - !Ref DBSecurityGroup
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.ssm
+      SubnetIds:
+        - !Ref PublicSubnet1
+      VpcEndpointType: Interface
+      VpcId: !Ref VPC
+
+  # IAM Role for our Lambda Function, so that the function can be run, and has access to Parameter Store
+  DBInitRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action: sts:AssumeRole
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+      Policies:
+        - PolicyName: GetSSMParameterPolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action: ssm:GetParameter
+                Resource: !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/*
+
+  # This is the actual Lambda Function definition
+  DBInitHandler:
+    Type: AWS::Lambda::Function
+    Properties:
+      Environment:
+        Variables:
+          REGION: !Ref AWS::Region
+          DB_ENDPOINT: !GetAtt RDSCluster.Endpoint.Address
+          DB_USER: !Ref DBUser
+          DB_PASSWORD: !Ref DBPassword
+          DB_NAME: !Ref DBName
+          SQL_SCHEME_PARAM: !Sub ${AWS::StackName}-${SqlSchemeParameter}
+          SQL_DATA_PARAM: !Sub ${AWS::StackName}-${SqlDataParameter}
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      FunctionName: !Sub ${AWS::StackName}-db-init-handler
+      Handler: com.bw.dbinit.Handler::handle
+      Runtime: java17
+      Role: !GetAtt DBInitRole.Arn
+      Timeout: 120
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref DBSecurityGroup
+        SubnetIds:
+          - !Ref PublicSubnet1
+    DependsOn:
+      - RDSDBInstance
+      - S3Endpoint
+      - SSMEndpoint

@@ -1,0 +1,13 @@
+{
+  "RequestType": "Delete",
+  "ServiceToken": "arn:aws:lambda:ap-southeast-2:291148202449:function:mysql-database-db-init-handler",
+  "ResponseURL": "https://cloudformation-custom-resource-response-apsoutheast2.s3-ap-southeast-2.amazonaws.com/arn%3Aaws%3Acloudformation%3Aap-southeast-2%3A291148202449%3Astack/mysql-database/4556b210-d0bd-11ee-b7e1-06a61b515c43%7CDBInitTrigger%7C9272ec19-b94a-4a36-93fd-7baed5db814f?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20240221T140713Z&X-Amz-SignedHeaders=host&X-Amz-Expires=7200&X-Amz-Credential=AKIA6MM33IIZVQ6MS7JB%2F20240221%2Fap-southeast-2%2Fs3%2Faws4_request&X-Amz-Signature=6d1071eab6cc72ec4400bf6684952e1a667e482fb5a8d4458dd5f672008258a7",
+  "StackId": "arn:aws:cloudformation:ap-southeast-2:291148202449:stack/mysql-database/4556b210-d0bd-11ee-b7e1-06a61b515c43",
+  "RequestId": "9272ec19-b94a-4a36-93fd-7baed5db814f",
+  "LogicalResourceId": "DBInitTrigger",
+  "PhysicalResourceId": "mysql-database-DBInitTrigger-1WKY05NDLO78Y",
+  "ResourceType": "Custom::CustomResource",
+  "ResourceProperties": {
+    "ServiceToken": "arn:aws:lambda:ap-southeast-2:291148202449:function:mysql-database-db-init-handler"
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "RequestType": "Create",
+  "ServiceToken": "arn:aws:lambda:ap-southeast-2:291148202449:function:mysql-database-db-init-handler",
+  "ResponseURL": "https://cloudformation-custom-resource-response-apsoutheast2.s3-ap-southeast-2.amazonaws.com/",
+  "StackId": "arn:aws:cloudformation:ap-southeast-2:291148202449:stack/mysql-database/stack_id",
+  "RequestId": "request_id",
+  "LogicalResourceId": "DBInitTrigger",
+  "ResourceType": "Custom::CustomResource",
+  "ResourceProperties": {
+    "ServiceToken": "arn:aws:lambda:ap-southeast-2:291148202449:function:mysql-database-db-init-handler"
+  }
+}

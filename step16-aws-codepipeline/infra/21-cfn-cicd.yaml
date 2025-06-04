@@ -1,0 +1,477 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Description: The CICD resources for microservice
+
+Parameters:
+  BuildSpecLocation:
+    Description: The location of the buildspec to build the docker image and upload to AWS ECR
+    Type: String
+    Default: buildspec.yml
+  DeployTestSpecLocation:
+    Description: The location of the buildspec to deploy the docker image to test namespace
+    Type: String
+    Default: deployspec-test.yml
+  DeployProdSpecLocation:
+    Description: The location of the buildspec to deploy the docker image to prod namespace
+      inside the repository
+    Type: String
+    Default: deployspec-prod.yml
+  CICDBranch:
+    Description: The branch that will be used for the CICD process, we have changed the branch from master to main
+    Type: String
+    Default: main
+
+  # We need repository name to create 5 different services
+  CodeCommitRepositoryName:
+    Description: The CodeCommit Repository Name of this project 
+    Type: String
+
+Resources:
+
+  # CodeBuild Role
+  RoleCodeBuildService:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codebuild.amazonaws.com
+            Action: sts:AssumeRole
+  
+  # CodeBuild Policy
+  PolicyCodeBuildService:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - eks:DescribeNodegroup
+              - eks:DescribeUpdate
+              - eks:DescribeCluster
+            Resource: "*"
+          - Effect: Allow
+            Action:
+              - logs:CreateLogGroup
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+            Resource:
+              - !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/${AWS::StackName}-build
+              - !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/${AWS::StackName}-build:*
+              - !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/${AWS::StackName}-deploy-test
+              - !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/${AWS::StackName}-deploy-test:*
+              - !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/${AWS::StackName}-deploy-prod
+              - !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/${AWS::StackName}-deploy-prod:*
+          - Effect: Allow
+            Action: ecr:*
+            Resource: "*"
+          - Effect: Allow
+            Action:
+              - s3:PutObject
+              - s3:GetObject
+              - s3:GetObjectVersion
+              - s3:GetBucketAcl
+              - s3:GetBucketLocation
+            Resource:
+              - !GetAtt CodePipelineS3BucketArtifacts.Arn
+              - !Sub ${CodePipelineS3BucketArtifacts.Arn}/*
+          - Effect: Allow
+            Action:
+              - codecommit:GitPull
+            Resource:
+              - !Sub arn:${AWS::Partition}:codecommit:ap-southeast-2:291148202449:${CodeCommitRepositoryName}
+          - Effect: Allow
+            Action:
+              - codebuild:CreateReportGroup
+              - codebuild:CreateReport
+              - codebuild:UpdateReport
+              - codebuild:BatchPutTestCases
+            Resource:
+              - !Sub arn:${AWS::Partition}:codebuild:${AWS::Region}:${AWS::AccountId}:report-group/*
+          - Effect: Allow
+            Action: 
+              - ssm:GetParameter
+              - ssm:GetParameters
+            Resource: !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/*
+      PolicyName: !Sub ${AWS::StackName}-code-build-policy
+      Roles:
+        - !Ref RoleCodeBuildService
+
+  # CodeBuild Project
+  ProjectBuild:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Artifacts:
+        Type: NO_ARTIFACTS
+      BadgeEnabled: false
+      Description: CodeBuild project for the App
+      Environment:
+        Type: LINUX_CONTAINER
+        Image: aws/codebuild/amazonlinux2-x86_64-standard:5.0
+        ComputeType: BUILD_GENERAL1_SMALL
+        EnvironmentVariables: []
+        PrivilegedMode: true
+        ImagePullCredentialsType: CODEBUILD
+      Name: !Sub ${AWS::StackName}-build
+      QueuedTimeoutInMinutes: 480
+      ServiceRole: !Ref RoleCodeBuildService
+      Source:
+        Type: CODECOMMIT
+        Location: !Sub https://git-codecommit.ap-southeast-2.amazonaws.com/v1/repos/${CodeCommitRepositoryName}
+        BuildSpec: !Ref BuildSpecLocation
+      SourceVersion: !Sub refs/heads/${CICDBranch}
+      TimeoutInMinutes: 60
+  
+  # CodeBuild deploy to test
+  ProjectDeployTest:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Artifacts:
+        Type: NO_ARTIFACTS
+      BadgeEnabled: false
+      Description: CodeBuild project to deploy the App into the 'test' environment
+      Environment:
+        Type: LINUX_CONTAINER
+        Image: aws/codebuild/amazonlinux2-x86_64-standard:5.0
+        ComputeType: BUILD_GENERAL1_SMALL
+        EnvironmentVariables: []
+        PrivilegedMode: true
+        ImagePullCredentialsType: CODEBUILD
+      Name: !Sub ${AWS::StackName}-deploy-test
+      QueuedTimeoutInMinutes: 480
+      ServiceRole: !Ref RoleCodeBuildService
+      Source:
+        Type: CODECOMMIT
+        Location: !Sub https://git-codecommit.ap-southeast-2.amazonaws.com/v1/repos/${CodeCommitRepositoryName}
+        BuildSpec: !Ref DeployTestSpecLocation
+      SourceVersion: !Sub refs/heads/${CICDBranch}
+      TimeoutInMinutes: 60
+  
+  # CodeBuild deploy to prod
+  ProjectDeployProd:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Artifacts:
+        Type: NO_ARTIFACTS
+      BadgeEnabled: false
+      Description: CodeBuild project to deploy the App into the 'prod' environment
+      Environment:
+        Type: LINUX_CONTAINER
+        Image: aws/codebuild/amazonlinux2-x86_64-standard:5.0
+        ComputeType: BUILD_GENERAL1_SMALL
+        EnvironmentVariables: []
+        PrivilegedMode: true
+        ImagePullCredentialsType: CODEBUILD
+      Name: !Sub ${AWS::StackName}-deploy-prod
+      QueuedTimeoutInMinutes: 480
+      ServiceRole: !Ref RoleCodeBuildService
+      Source:
+        Type: CODECOMMIT
+        Location: !Sub https://git-codecommit.ap-southeast-2.amazonaws.com/v1/repos/${CodeCommitRepositoryName}
+        BuildSpec: !Ref DeployProdSpecLocation
+      SourceVersion: !Sub refs/heads/${CICDBranch}
+      TimeoutInMinutes: 60
+  
+  # CodePipeline Role
+  RoleCodePipelineService:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codepipeline.amazonaws.com
+            Action: sts:AssumeRole
+  
+  # CodePipeline Policy
+  PolicyCodePipelineService:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action: iam:PassRole
+            Resource: "*"
+            Condition:
+              StringEqualsIfExists:
+                iam:PassedToService:
+                  - cloudformation.amazonaws.com
+                  - elasticbeanstalk.amazonaws.com
+                  - ec2.amazonaws.com
+                  - ecs-tasks.amazonaws.com
+          - Effect: Allow
+            Action:
+              - codecommit:CancelUploadArchive
+              - codecommit:GetBranch
+              - codecommit:GetCommit
+              - codecommit:GetUploadArchiveStatus
+              - codecommit:UploadArchive
+            Resource: !Sub arn:${AWS::Partition}:codecommit:ap-southeast-2:291148202449:${CodeCommitRepositoryName}
+          - Effect: Allow
+            Action:
+              - codedeploy:CreateDeployment
+              - codedeploy:GetApplication
+              - codedeploy:GetApplicationRevision
+              - codedeploy:GetDeployment
+              - codedeploy:GetDeploymentConfig
+              - codedeploy:RegisterApplicationRevision
+            Resource: "*"
+          - Effect: Allow
+            Action:
+              - elasticbeanstalk:*
+              - ec2:*
+              - elasticloadbalancing:*
+              - autoscaling:*
+              - cloudwatch:*
+              - s3:*
+              - sns:*
+              - cloudformation:*
+              - rds:*
+              - sqs:*
+              - ecs:*
+            Resource: "*"
+          - Effect: Allow
+            Action:
+              - lambda:InvokeFunction
+              - lambda:ListFunctions
+            Resource: "*"
+          - Effect: Allow
+            Action:
+              - opsworks:CreateDeployment
+              - opsworks:DescribeApps
+              - opsworks:DescribeCommands
+              - opsworks:DescribeDeployments
+              - opsworks:DescribeInstances
+              - opsworks:DescribeStacks
+              - opsworks:UpdateApp
+              - opsworks:UpdateStack
+            Resource: "*"
+          - Effect: Allow
+            Action:
+              - cloudformation:CreateStack
+              - cloudformation:DeleteStack
+              - cloudformation:DescribeStacks
+              - cloudformation:UpdateStack
+              - cloudformation:CreateChangeSet
+              - cloudformation:DeleteChangeSet
+              - cloudformation:DescribeChangeSet
+              - cloudformation:ExecuteChangeSet
+              - cloudformation:SetStackPolicy
+              - cloudformation:ValidateTemplate
+            Resource: "*"
+          - Effect: Allow
+            Action:
+              - codebuild:BatchGetBuilds
+              - codebuild:StartBuild
+            Resource: "*"
+          - Effect: Allow
+            Action:
+              - devicefarm:ListProjects
+              - devicefarm:ListDevicePools
+              - devicefarm:GetRun
+              - devicefarm:GetUpload
+              - devicefarm:CreateUpload
+              - devicefarm:ScheduleRun
+            Resource: "*"
+          - Effect: Allow
+            Action:
+              - servicecatalog:ListProvisioningArtifacts
+              - servicecatalog:CreateProvisioningArtifact
+              - servicecatalog:DescribeProvisioningArtifact
+              - servicecatalog:DeleteProvisioningArtifact
+              - servicecatalog:UpdateProduct
+            Resource: "*"
+          - Effect: Allow
+            Action: cloudformation:ValidateTemplate
+            Resource: "*"
+          - Effect: Allow
+            Action: ecr:DescribeImages
+            Resource: "*"
+          - Effect: Allow
+            Action: s3:*
+            Resource:
+              - !GetAtt CodePipelineS3BucketArtifacts.Arn
+              - !Sub ${CodePipelineS3BucketArtifacts.Arn}/*
+      PolicyName: !Sub ${AWS::StackName}-code-pipeline-policy
+      Roles:
+        - !Ref RoleCodePipelineService
+  
+  # S3 Bucket for CodePipeline
+  CodePipelineS3BucketArtifacts:
+    Type: AWS::S3::Bucket
+    UpdateReplacePolicy: Retain
+    DeletionPolicy: Retain
+  
+  # S3 Bucket Policy for CodePipeline
+  CodePipelineS3BucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref CodePipelineS3BucketArtifacts
+      PolicyDocument:
+        Version: 2012-10-17
+        Id: SSEAndSSLPolicy
+        Statement:
+          - Sid: DenyUnEncryptedObjectUploads
+            Effect: Deny
+            Principal: "*"
+            Action: s3:PutObject
+            Resource: !Sub ${CodePipelineS3BucketArtifacts.Arn}/*
+            Condition:
+              StringNotEquals:
+                s3:x-amz-server-side-encryption: aws:kms
+          - Sid: DenyInsecureConnections
+            Effect: Deny
+            Principal: "*"
+            Action: s3:*
+            Resource: !Sub ${CodePipelineS3BucketArtifacts.Arn}/*
+            Condition:
+              Bool:
+                aws:SecureTransport: "false"
+
+  # CodePipeline
+  CodePipelineBuild:
+    Type: AWS::CodePipeline::Pipeline
+    DependsOn: PolicyCodePipelineService
+    Properties:
+      RoleArn: !GetAtt RoleCodePipelineService.Arn
+      Name: !Sub ${AWS::StackName}-pipeline
+      ArtifactStore:
+        Type: S3
+        Location: !Ref CodePipelineS3BucketArtifacts
+      Stages:
+        - Name: Source
+          Actions:
+            - Name: Source
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Provider: CodeCommit
+                Version: "1"
+              RunOrder: 1
+              Configuration:
+                BranchName: !Ref CICDBranch
+                PollForSourceChanges: "false"
+                RepositoryName: !Ref CodeCommitRepositoryName
+              OutputArtifacts:
+                - Name: SourceArtifact
+              InputArtifacts: []
+              Region: !Ref AWS::Region
+              Namespace: SourceVariables
+        - Name: Build
+          Actions:
+            - Name: Build
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Provider: CodeBuild
+                Version: "1"
+              RunOrder: 1
+              Configuration:
+                ProjectName: !Ref ProjectBuild
+              OutputArtifacts:
+                - Name: BuildArtifact
+              InputArtifacts:
+                - Name: SourceArtifact
+              Region: !Ref AWS::Region
+              Namespace: BuildVariables
+        - Name: DeployTest
+          Actions:
+            - Name: DeployTest
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Provider: CodeBuild
+                Version: "1"
+              RunOrder: 1
+              Configuration:
+                ProjectName: !Ref ProjectDeployTest
+              OutputArtifacts:
+                - Name: DeployTestArtifact
+              InputArtifacts:
+                - Name: SourceArtifact
+              Region: !Ref AWS::Region
+              Namespace: DeployVariables
+        - Name: DeployProd
+          Actions:
+            - Name: Approve
+              ActionTypeId:
+                Category: Approval
+                Owner: AWS
+                Provider: Manual
+                Version: "1"
+              RunOrder: 1
+            - Name: DeployProd
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Provider: CodeBuild
+                Version: "1"
+              RunOrder: 2
+              Configuration:
+                ProjectName: !Ref ProjectDeployProd
+              OutputArtifacts:
+                - Name: DeployProdArtifact
+              InputArtifacts:
+                - Name: SourceArtifact
+              Region: !Ref AWS::Region
+              Namespace: DeployProdVariables
+  
+  # CloudWatch Rule
+  CloudWatchEventRule:
+    Type: AWS::Events::Rule
+    Properties:
+      EventPattern:
+        source:
+          - aws.codecommit
+        detail-type:
+          - CodeCommit Repository State Change
+        resources:
+          - !Sub arn:${AWS::Partition}:codecommit:ap-southeast-2:291148202449:${CodeCommitRepositoryName}
+        detail:
+          event:
+            - referenceCreated
+            - referenceUpdated
+          referenceType:
+            - branch
+          referenceName:
+            - Ref: CICDBranch
+      State: ENABLED
+      Targets:
+        - Arn: !Sub arn:${AWS::Partition}:codepipeline:${AWS::Region}:${AWS::AccountId}:${CodePipelineBuild}
+          Id: CodePipeline
+          RoleArn: !GetAtt CloudWatchTargetRole.Arn
+  
+  # CloudWatch Role
+  CloudWatchTargetRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: sts:AssumeRole
+  
+  # CloudWatch Policy
+  CloudWatchTargetPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action: codepipeline:StartPipelineExecution
+            Resource: !Sub arn:${AWS::Partition}:codepipeline:${AWS::Region}:${AWS::AccountId}:${CodePipelineBuild}
+      PolicyName: !Sub ${AWS::StackName}-cloud-watch-target-policy
+      Roles:
+        - !Ref CloudWatchTargetRole
+
+Outputs:
+  RoleCodeBuildServiceArn:
+    Value: !GetAtt RoleCodeBuildService.Arn

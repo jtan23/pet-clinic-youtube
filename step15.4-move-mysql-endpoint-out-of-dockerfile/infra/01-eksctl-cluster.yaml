@@ -1,0 +1,21 @@
+# yaml-language-server: $schema=eksctl.yaml.json
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+
+metadata:
+  name: petclinic-cluster
+  # I'm in ap-southeast-2 region, you might need to change it to your region
+  region: ap-southeast-2
+  # This is the latest supported version by eksctl, even though AWS latest version is 1.29
+  version: "1.27"
+
+vpc:
+  cidr: 10.0.0.0/16
+
+nodeGroups:
+  - name: petclinic-node-group
+    # To run both test and prod environments, a t3.xlarge is needed
+    # For testing the setup, let's use t2.micro
+    instanceType: t3.xlarge
+    desiredCapacity: 3
+    privateNetworking: true

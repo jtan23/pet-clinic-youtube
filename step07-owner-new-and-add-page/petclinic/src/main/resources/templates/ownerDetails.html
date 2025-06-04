@@ -1,0 +1,40 @@
+<!doctype html>
+<html th:replace="~{fragments/layout :: layout(~{::body})}">
+<body>
+<h2>Owner Information</h2>
+<table>
+    <tr><th>Name</th><td><b th:text="${owner.firstName + ' ' + owner.lastName}"></b></td></tr>
+    <tr><th>Address</th><td th:text="${owner.address}"></td></tr>
+    <tr><th>City</th><td th:text="${owner.city}"></td></tr>
+    <tr><th>Telephone</th><td th:text="${owner.telephone}"></td></tr>
+</table>
+<a th:href="@{/owners/edit?ownerId=__${owner.id}__}">Edit Owner</a>
+<a th:href="@{/pets/new?ownerId=__${owner.id}__}">Add Pet</a>
+<br>
+<h2>Pets and Visits</h2>
+<table>
+    <tr th:each="pet : ${owner.pets}">
+        <td>
+            <dl>
+                <dt>Name</dt><dd th:text="${pet.name}"></dd>
+                <dt>Birth Date</dt><dd th:text="${#temporals.format(pet.birthDate, 'yyyy-MM-dd')}"></dd>
+                <dt>Type</dt><dd th:text="${pet.petType}"></dd>
+            </dl>
+        </td>
+        <td>
+            <table>
+                <thead><tr><th>Visit Date</th><th>Description</th></tr></thead>
+                <tbody>
+                    <tr th:each="visit : ${pet.visits}">
+                        <td th:text="${#temporals.format(visit.visitDate, 'yyyy-MM-dd')}"></td>
+                        <td th:text="${visit.description}"></td>
+                    </tr>
+                </tbody>
+            </table>
+            <a th:href="@{/pets/edit?ownerId=__${owner.id}__&petId=__${pet.id}__}">Edit Pet</a>
+            <a th:href="@{/visits/new?ownerId=__${owner.id}__&petId=__${pet.id}__}">Add Visit</a>
+        </td>
+    </tr>
+</table>
+</body>
+</html>

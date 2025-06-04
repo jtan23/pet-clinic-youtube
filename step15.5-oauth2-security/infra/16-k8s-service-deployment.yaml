@@ -1,0 +1,76 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: APP_NAME-service
+  namespace: NAME_SPACE
+  labels:
+    app: APP_NAME-app
+spec:
+  type: ClusterIP
+  selector:
+    component: APP_NAME
+    app: APP_NAME-app
+  ports:
+    - port: 8080
+      targetPort: TARGET_PORT
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: APP_NAME-service
+  namespace: NAME_SPACE
+  labels:
+    app: APP_NAME-app
+spec:
+  replicas: 1
+  strategy:
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+  selector:
+    matchLabels:
+      component: APP_NAME
+      app: APP_NAME-app
+  template:
+    metadata:
+      labels:
+        component: APP_NAME
+        app: APP_NAME-app
+    spec:
+#      serviceAccountName: APP_NAME-iam-service-account
+      containers:
+        - name: APP_NAME
+          image: 291148202449.dkr.ecr.ap-southeast-2.amazonaws.com/APP_NAME:latest
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "500m"
+            limits:
+              memory: "768Mi"
+              cpu: "1"
+          ports:
+            - containerPort: 8080
+          env:
+            - name: USER_NAME
+              value: petclinic
+            - name: USER_PWD
+              value: petclinic
+            - name: DB_URL
+              value: jdbc:mysql://DB_ENDPOINT:3306/petclinic
+            - name: OWNER_URL
+              value: "http://owner-service:8080/owners"
+            - name: PET_URL
+              value: "http://pet-service:8080/pets"
+            - name: PET_TYPE_URL
+              value: "http://pet-service:8080/pet-types"
+            - name: VISIT_URL
+              value: "http://visit-service:8080/visits"
+            - name: VET_URL
+              value: "http://vet-service:8080/vets"
+            - name: PETCLINIC_DOMAIN
+              value: PETCLINIC_DOMAIN_VALUE
+            - name: OAUTH2_DOMAIN
+              value: OAUTH2_DOMAIN_VALUE
+            - name: CLIENT_ID
+              value: CLIENT_ID_VALUE

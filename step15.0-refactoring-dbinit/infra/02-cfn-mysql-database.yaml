@@ -1,0 +1,342 @@
+Description: >-
+  Build Aurora MySQL RDSCluster.
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: VPC
+        Parameters:
+          - VpcId
+          - DBSubnet1
+          - DBSubnet2
+          - DBSubnet3
+          - DBRouteTable
+      - Label:
+          default: Database
+        Parameters:
+          - DBInstanceClass
+          - DBEngineVersion
+          - DBUser
+          - DBPassword
+          - DBName
+      - Label:
+          default: Custom Resource
+        Parameters:
+          - SqlSchemeParameter
+          - SqlDataParameter
+          - LambdaCodeS3Bucket
+          - LambdaCodeS3Key
+
+Parameters:
+  DBInstanceClass:
+    Description: The database instance type
+    Type: String
+    AllowedValues:
+      - db.t3.small
+      - db.t3.medium
+      - db.t3.large
+      - db.t4g.medium
+      - db.t4g.large
+      - db.r5.large
+      - db.r5.xlarge
+    ConstraintDescription: must select a valid database instance type.
+    Default: db.t3.large
+  DBEngineVersion:
+    Description: The database engine Version
+    Type: String
+    Default: 5.7.mysql_aurora.2.12.0
+  DBUser:
+    Description: The database admin account username
+    Type: String
+    Default: petclinic
+  DBPassword:
+    NoEcho: true
+    Description: The database admin account password
+    Type: String
+    Default: petclinic
+  DBName:
+    Description: Name of the default database
+    Type: String
+    Default: petclinic
+  SqlSchemeParameter:
+    Description: Name of the SQL Scheme Parameter
+    Type: String
+    Default: pet-clinic-mysql-scheme
+  SqlDataParameter:
+    Description: Name of the SQL Data Parameter
+    Type: String
+    Default: pet-clinic-mysql-data
+  LambdaCodeS3Bucket:
+    Description: Bucket name of the Lambda code
+    Type: String
+    Default: jtan23-petclinic
+  LambdaCodeS3Key:
+    Description: Lambda code jar file name
+    Type: String
+    Default: dbinit-1.0.0.jar
+
+  # We need the following VPC settings to create our database
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+  DBSubnet1:
+    Type: AWS::EC2::Subnet::Id
+  DBSubnet2:
+    Type: AWS::EC2::Subnet::Id
+  DBSubnet3:
+    Type: AWS::EC2::Subnet::Id
+  DBRouteTable:
+    Type: String
+
+Resources:
+  # The Security Group used by our Database Cluster
+  DBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow only 443 and 3306 inbound traffic
+      VpcId: !Ref VpcId
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic by default
+          IpProtocol: "-1"
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-db-sg
+  DBMySQLIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      CidrIp: 0.0.0.0/0
+      IpProtocol: tcp
+      FromPort: 3306
+      ToPort: 3306
+      GroupId: !GetAtt DBSecurityGroup.GroupId
+  DBHttpsIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      CidrIp: 0.0.0.0/0
+      IpProtocol: tcp
+      FromPort: 443
+      ToPort: 443
+      GroupId: !GetAtt DBSecurityGroup.GroupId
+
+  # The Subnet Group used by our Database Cluster
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Subnets the database can be created in
+      SubnetIds:
+        - !Ref DBSubnet1
+        - !Ref DBSubnet2
+        - !Ref DBSubnet3
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-db-subnet-group
+  
+  # The Database Cluster for managing our Databases
+  RDSCluster:
+    Type: AWS::RDS::DBCluster
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      Engine: aurora-mysql
+      EngineMode: provisioned
+      EngineVersion: !Ref DBEngineVersion
+      EnableCloudwatchLogsExports: [error, general, slowquery]
+      VpcSecurityGroupIds:
+        - !Ref DBSecurityGroup
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      MasterUsername: !Ref DBUser
+      MasterUserPassword: !Ref DBPassword
+      DatabaseName: !Ref DBName
+      Port: 3306
+      CopyTagsToSnapshot: true
+      DBClusterIdentifier: !Sub ${AWS::StackName}-mysql-cluster
+      BackupRetentionPeriod: 1
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-mysql-cluster
+  
+  # The Database instances
+  RDSDBInstance:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      Engine: aurora-mysql
+      DBInstanceClass: !Ref DBInstanceClass
+      DBClusterIdentifier: !Ref RDSCluster
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      PubliclyAccessible: false
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-mysql-instance
+  
+  # We need to save the database cluster endpoint to Parameter Store, so that our applications can find it
+  DBClusterEndpoint:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: pet-clinic-mysql-endpoint
+      Type: String
+      Value: !GetAtt RDSCluster.Endpoint.Address
+      Description: MySQL writer host name
+
+  # Let's save our SQL Schema into Parameter Store, so that our Lambda function can find it
+  SQLSchemeParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub ${AWS::StackName}-${SqlSchemeParameter}
+      Type: String
+      Value: |
+        CREATE TABLE vets (id INT(4) UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, first_name VARCHAR(30), last_name VARCHAR(30), INDEX(last_name));
+        CREATE TABLE specialties (id INT(4) UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, name VARCHAR(80), INDEX(name));
+        CREATE TABLE vet_specialties (vet_id INT(4) UNSIGNED NOT NULL, specialty_id INT(4) UNSIGNED NOT NULL, FOREIGN KEY (vet_id) REFERENCES vets(id), FOREIGN KEY (specialty_id) REFERENCES specialties(id), UNIQUE (vet_id,specialty_id));
+        CREATE TABLE pet_types (id INT(4) UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, name VARCHAR(80), INDEX(name));
+        CREATE TABLE owners (id INT(4) UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, first_name VARCHAR(30), last_name VARCHAR(30), address VARCHAR(255), city VARCHAR(80), telephone VARCHAR(20), INDEX(last_name));
+        CREATE TABLE pets (id INT(4) UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, name VARCHAR(30), birth_date DATE, pet_type_id INT(4) UNSIGNED NOT NULL, owner_id INT(4) UNSIGNED, INDEX(name), FOREIGN KEY (owner_id) REFERENCES owners(id), FOREIGN KEY (pet_type_id) REFERENCES pet_types(id));
+        CREATE TABLE visits (id INT(4) UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, pet_id INT(4) UNSIGNED, visit_date DATE, description VARCHAR(255), FOREIGN KEY (pet_id) REFERENCES pets(id));
+        CREATE TABLE users (username VARCHAR(50) NOT NULL PRIMARY KEY, password CHAR(68) NOT NULL, enabled TINYINT NOT NULL);
+        CREATE TABLE authorities (username VARCHAR(50) NOT NULL, authority VARCHAR(50) NOT NULL, PRIMARY KEY (username, authority));
+
+  # Let's save our SQL init data into Parameter Store, so that our Lambda function can find it
+  SQLDataParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub ${AWS::StackName}-${SqlDataParameter}
+      Type: String
+      Value: |
+        INSERT INTO vets VALUES (1, 'James', 'Carter');
+        INSERT INTO vets VALUES (2, 'Helen', 'Leary');
+        INSERT INTO vets VALUES (3, 'Linda', 'Douglas');
+        INSERT INTO vets VALUES (4, 'Rafael', 'Ortega');
+        INSERT INTO vets VALUES (5, 'Henry', 'Stevens');
+        INSERT INTO vets VALUES (6, 'Sharon', 'Jenkins');
+        INSERT INTO specialties VALUES (1, 'radiology');
+        INSERT INTO specialties VALUES (2, 'surgery');
+        INSERT INTO specialties VALUES (3, 'dentistry');
+        INSERT INTO vet_specialties VALUES (2, 1);
+        INSERT INTO vet_specialties VALUES (3, 2);
+        INSERT INTO vet_specialties VALUES (3, 3);
+        INSERT INTO vet_specialties VALUES (4, 2);
+        INSERT INTO vet_specialties VALUES (5, 1);
+        INSERT INTO pet_types VALUES (1, 'Cat');
+        INSERT INTO pet_types VALUES (2, 'Dog');
+        INSERT INTO pet_types VALUES (3, 'Lizard');
+        INSERT INTO pet_types VALUES (4, 'Snake');
+        INSERT INTO pet_types VALUES (5, 'Bird');
+        INSERT INTO pet_types VALUES (6, 'Hamster');
+        INSERT INTO owners VALUES (1, 'George', 'Franklin', '110 W. Liberty St.', 'Madison', '6085551023');
+        INSERT INTO owners VALUES (2, 'Betty', 'Davis', '638 Cardinal Ave.', 'Sun Prairie', '6085551749');
+        INSERT INTO owners VALUES (3, 'Eduardo', 'Rodriquez', '2693 Commerce St.', 'McFarland', '6085558763');
+        INSERT INTO owners VALUES (4, 'Harold', 'Davis', '563 Friendly St.', 'Windsor', '6085553198');
+        INSERT INTO owners VALUES (5, 'Peter', 'McTavish', '2387 S. Fair Way', 'Madison', '6085552765');
+        INSERT INTO owners VALUES (6, 'Jean', 'Coleman', '105 N. Lake St.', 'Monona', '6085552654');
+        INSERT INTO owners VALUES (7, 'Jeff', 'Black', '1450 Oak Blvd.', 'Monona', '6085555387');
+        INSERT INTO owners VALUES (8, 'Maria', 'Escobito', '345 Maple St.', 'Madison', '6085557683');
+        INSERT INTO owners VALUES (9, 'David', 'Schroeder', '2749 Blackhawk Trail', 'Madison', '6085559435');
+        INSERT INTO owners VALUES (10, 'Carlos', 'Estaban', '2335 Independence La.', 'Waunakee', '6085555487');
+        INSERT INTO pets VALUES (1, 'Leo', '2000-09-07', 1, 1);
+        INSERT INTO pets VALUES (2, 'Basil', '2002-08-06', 6, 2);
+        INSERT INTO pets VALUES (3, 'Rosy', '2001-04-17', 2, 3);
+        INSERT INTO pets VALUES (4, 'Jewel', '2000-03-07', 2, 3);
+        INSERT INTO pets VALUES (5, 'Iggy', '2000-11-30', 3, 4);
+        INSERT INTO pets VALUES (6, 'George', '2000-01-20', 4, 5);
+        INSERT INTO pets VALUES (7, 'Samantha', '1995-09-04', 1, 6);
+        INSERT INTO pets VALUES (8, 'Max', '1995-09-04', 1, 6);
+        INSERT INTO pets VALUES (9, 'Lucky', '1999-08-06', 5, 7);
+        INSERT INTO pets VALUES (10, 'Mulligan', '1997-02-24', 2, 8);
+        INSERT INTO pets VALUES (11, 'Freddy', '2000-03-09', 5, 9);
+        INSERT INTO pets VALUES (12, 'Lucky', '2000-06-24', 2, 10);
+        INSERT INTO pets VALUES (13, 'Sly', '2002-06-08', 1, 10);
+        INSERT INTO visits VALUES (1, 7, '2010-03-04', 'Rabies shot');
+        INSERT INTO visits VALUES (2, 8, '2011-03-04', 'Rabies shot');
+        INSERT INTO visits VALUES (3, 8, '2009-06-04', 'Neutered');
+        INSERT INTO visits VALUES (4, 7, '2008-09-04', 'Spayed');
+        INSERT INTO users VALUES ('admin', '{bcrypt}$2y$10$PTsCWNUt2Vkr.X/AV4qu2um5sqo3Wd2qwzoV7TtEfJzMJcPQv89Bm', 1);
+        INSERT INTO users VALUES ('user',  '{bcrypt}$2y$10$z62nRHa0Ne2gxh2PHfd45.oUGJGPq9Iu8893nLGYkbyt2qv/y9I0W', 1);
+        INSERT INTO users VALUES ('guest', '{bcrypt}$2y$10$TfgqRMz0xswwwLJ8RWcVAOaUjQAPeHuMnmSjFZuK0O5bc4//8F6RK', 1);
+        INSERT INTO authorities VALUES ('admin', 'ROLE_ADMIN');
+        INSERT INTO authorities VALUES ('admin', 'ROLE_USER');
+        INSERT INTO authorities VALUES ('user', 'ROLE_USER');
+        INSERT INTO authorities VALUES ('guest', 'ROLE_GUEST');
+
+  # Let's create a S3 Endpoint on DBRouteTable, so that our Lambda function running on DBSubnet1 can access it
+  S3Endpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      RouteTableIds:
+        - !Ref DBRouteTable
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.s3
+      VpcId: !Ref VpcId
+
+  # Let's create a SSE Endpoint on DBSubnet1, so that our Lambda function running on DBSubnet1 can access it
+  SSMEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      PrivateDnsEnabled: true
+      SecurityGroupIds:
+        - !Ref DBSecurityGroup
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.ssm
+      SubnetIds:
+        - !Ref DBSubnet1
+      VpcEndpointType: Interface
+      VpcId: !Ref VpcId
+
+  # The role for our Lambda function to do it's job
+  DBInitRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action: sts:AssumeRole
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+      Policies:
+        - PolicyName: GetSSMParameterPolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action: ssm:GetParameter
+                Resource: !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/*
+
+  # Create the Lambda function to initialise our newly created database
+  DBInitHandler:
+    Type: AWS::Lambda::Function
+    Properties:
+      Environment:
+        Variables:
+          REGION: !Ref AWS::Region
+          DB_ENDPOINT: !GetAtt RDSCluster.Endpoint.Address
+          DB_USER: !Ref DBUser
+          DB_PASSWORD: !Ref DBPassword
+          DB_NAME: !Ref DBName
+          SQL_SCHEME_PARAM: !Sub ${AWS::StackName}-${SqlSchemeParameter}
+          SQL_DATA_PARAM: !Sub ${AWS::StackName}-${SqlDataParameter}
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      FunctionName: !Sub ${AWS::StackName}-db-init-handler
+      Handler: com.bw.dbinit.Handler::handle
+      Runtime: java17
+      Role: !GetAtt DBInitRole.Arn
+      Timeout: 120
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref DBSecurityGroup
+        SubnetIds:
+          - !Ref DBSubnet1
+    DependsOn:
+      - RDSDBInstance
+      - S3Endpoint
+      - SSMEndpoint
+
+  # Triggering our Lambda function to initialise our database
+  DBInitTrigger:
+    Type: Custom::CustomResource
+    Properties:
+      ServiceToken: !GetAtt DBInitHandler.Arn

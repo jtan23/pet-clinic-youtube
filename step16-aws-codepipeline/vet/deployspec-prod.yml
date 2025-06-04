@@ -1,0 +1,25 @@
+version: 0.2
+
+env:
+  variables:
+    APP: vet
+    REGION: ap-southeast-2
+    ACCOUNT: 291148202449
+
+phases:
+  pre_build:
+    commands:
+      - echo "pwd"
+      - source `pwd`/version
+      - COMMIT_ID_SHORT=`echo "${CODEBUILD_RESOLVED_SOURCE_VERSION}" | cut -c1-8`
+      - TAG=`echo "${MAJOR}.${MINOR}.${COMMIT_ID_SHORT}"`
+      - echo $TAG
+  build:
+    commands:
+      - echo Build started on `date`
+  post_build:
+    commands:
+      - sed -i "s/NAME_SPACE/prod/g; s/TARGET_PORT/8084/g; s|CONTAINER_IMAGE|${ACCOUNT}.dkr.ecr.${REGION}.amazonaws.com/${APP}:${TAG}|g; s|APP_NAME|${APP}|g" k8s-service-deployment.yaml
+      - cat k8s-service-deployment.yaml
+      - aws eks update-kubeconfig --name petclinic-cluster --region ${REGION}
+      - kubectl apply -f k8s-service-deployment.yaml

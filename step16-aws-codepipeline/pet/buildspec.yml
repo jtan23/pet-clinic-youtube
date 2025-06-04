@@ -1,0 +1,28 @@
+version: 0.2
+
+env:
+  variables:
+    APP: pet
+    REGION: ap-southeast-2
+    ACCOUNT: 291148202449
+
+phases:
+  pre_build:
+    commands:
+      - echo "pwd"
+      - source `pwd`/version
+      - COMMIT_ID_SHORT=`echo "${CODEBUILD_RESOLVED_SOURCE_VERSION}" | cut -c1-8`
+      - TAG=`echo "${MAJOR}.${MINOR}.${COMMIT_ID_SHORT}"`
+      - echo $TAG
+      - aws ecr get-login-password --region ${REGION} | docker login --username AWS --password-stdin ${ACCOUNT}.dkr.ecr.${REGION}.amazonaws.com
+      - DB_ENDPOINT=$(aws ssm get-parameters --names pet-clinic-mysql-endpoint --query Parameters[0].Value --output text)
+      - echo $DB_ENDPOINT
+  build:
+    commands:
+      - echo Build started on `date`
+      - mvn install
+      - docker build -t ${APP}:${TAG} --build-arg DB_ENDPOINT=$DB_ENDPOINT .
+      - docker tag ${APP}:${TAG} ${ACCOUNT}.dkr.ecr.${REGION}.amazonaws.com/${APP}:${TAG}
+  post_build:
+    commands:
+      - docker push ${ACCOUNT}.dkr.ecr.${REGION}.amazonaws.com/${APP}:${TAG}

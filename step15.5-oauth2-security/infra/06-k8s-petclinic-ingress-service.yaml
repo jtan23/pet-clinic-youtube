@@ -1,0 +1,24 @@
+# This will create EC2 - Load Balancer
+#     with Listener on HTTP:80
+#     map /* from NAM_SPACE to app-service:8080
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: INGRESS_NAME-ingress-service
+  namespace: NAME_SPACE
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+spec:
+  ingressClassName: alb
+  rules:
+    - host: SUB_DOMAIN.jtan23.net
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: SERVICE_NAME-service
+                port:
+                  number: 8080

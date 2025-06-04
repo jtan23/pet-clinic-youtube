@@ -1,0 +1,33 @@
+<!doctype html>
+<html th:fragment="layout (template)">
+<head>
+    <title>Pet Clinic</title>
+    <style>
+        table, th, td {
+            border: 1px solid black;
+            border-collapse: collapse;
+        }
+        .error { color: red; }
+    </style>
+</head>
+<body>
+<div>
+    <ul th:remove="all">
+        <li th:fragment="menuItem (link, title, text)">
+            <a th:href="@{${link}}" th:title="${title}">
+                <span th:text="${text}"></span>
+            </a>
+        </li>
+    </ul>
+    <ul>
+        <li th:replace="~{::menuItem ('/', 'home page', 'Home')}"></li>
+        <li th:replace="~{::menuItem ('/owners/find', 'find owners', 'Find Owners')}"></li>
+        <li th:replace="~{::menuItem ('/vets', 'veterinarians', 'Veterinarians')}"></li>
+        <li th:replace="~{::menuItem ('/oops', 'expected error', 'Oops')}"></li>
+    </ul>
+</div>
+<div>
+    <th:block th:insert="${template}"></th:block>
+</div>
+</body>
+</html>

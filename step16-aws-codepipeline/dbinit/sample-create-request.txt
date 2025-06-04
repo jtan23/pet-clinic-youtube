@@ -1,0 +1,10 @@
+{
+	RequestType=Create,
+	ServiceToken=arn:aws:lambda:ap-southeast-2:291148202449:function:mysql-database-db-init-handler,
+	ResponseURL=https://cloudformation-custom-resource-response-apsoutheast2.s3-ap-southeast-2.amazonaws.com/arn%3Aaws%3Acloudformation%3Aap-southeast-2%3A291148202449%3Astack/mysql-database/4556b210-d0bd-11ee-b7e1-06a61b515c43%7CDBInitTrigger%7C44c6c736-3b1b-4635-9c02-f3dff1ca957e?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20240221T134225Z&X-Amz-SignedHeaders=host&X-Amz-Expires=7200&X-Amz-Credential=AKIA6MM33IIZVQ6MS7JB%2F20240221%2Fap-southeast-2%2Fs3%2Faws4_request&X-Amz-Signature=ed113fefd28876cb3a503107758c801b3c061c3bf9d2acbbbc33ea85f25b7749,
+	StackId=arn:aws:cloudformation:ap-southeast-2:291148202449:stack/mysql-database/4556b210-d0bd-11ee-b7e1-06a61b515c43,
+	RequestId=44c6c736-3b1b-4635-9c02-f3dff1ca957e,
+	LogicalResourceId=DBInitTrigger,
+	ResourceType=Custom::CustomResource,
+	ResourceProperties={ServiceToken=arn:aws:lambda:ap-southeast-2:291148202449:function:mysql-database-db-init-handler}
+}

@@ -1,0 +1,37 @@
+<!doctype html>
+<html th:replace="~{fragments/layout :: layout(~{::body})}">
+<body>
+<h2>Visit</h2>
+<b>Pet</b>
+<table>
+    <thead><tr><th>Name</th><th>Birth Date</th><th>Type</th><th>Owner</th></tr></thead>
+    <tbody>
+        <tr>
+            <td th:text="${pet.name}"></td>
+            <td th:text="${#temporals.format(pet.birthDate, 'yyyy-MM-dd')}"></td>
+            <td th:text="${pet.petType}"></td>
+            <td th:text="${owner.firstName + ' ' + owner.lastName}"></td>
+        </tr>
+    </tbody>
+</table>
+<br/>
+<b>New Visit</b>
+<form th:action="${action}" th:object="${visit}" method="post">
+    <input th:replace="~{fragments/inputField :: input('Visit Date', 'visitDate', 'date')}" />
+    <input th:replace="~{fragments/inputField :: input('Description', 'description', 'text')}" />
+    <br/>
+    <button type="submit">Add Visit</button>
+</form>
+<br/>
+<b>Previous Visits</b>
+<table>
+    <thead><tr><th>Visit Date</th><th>Description</th></tr></thead>
+    <tbody>
+        <tr th:each="visit : ${pet.visits}">
+            <td th:text="${#temporals.format(visit.visitDate, 'yyyy-MM-dd')}"></td>
+            <td th:text="${visit.description}"></td>
+        </tr>
+    </tbody>
+</table>
+</body>
+</html>

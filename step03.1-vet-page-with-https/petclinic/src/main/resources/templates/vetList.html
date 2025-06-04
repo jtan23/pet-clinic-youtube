@@ -1,0 +1,41 @@
+<!doctype html>
+<html th:replace="~{fragments/layout :: layout(~{::body})}">
+<body>
+<h2>Vet List</h2>
+<table>
+    <thead><tr><th>Name</th><th>Specialty</th></tr></thead>
+    <tbody>
+        <tr th:each="vet : ${vets.content}">
+            <td th:text="${vet.firstName + ' ' + vet.lastName}"></td>
+            <td><span th:each="specialty : ${vet.specialties}" th:text="${specialty + ' '}"></span></td>
+        </tr>
+    </tbody>
+</table>
+<div>
+    <span>Pages</span>
+    <span>(</span>
+    <span th:each="i : ${#numbers.sequence(1, vets.totalPages)}">
+        <a th:if="${vets.number + 1 != i}" th:href="@{/vets?pageNumber=__${i}__}" th:text="${i}"></a>
+        <span th:unless="${vets.number + 1 != i}" th:text="${i}"></span>
+    </span>
+    <span>)</span>
+
+    <span>
+        <a th:if="${vets.number + 1 > 1}" th:href="@{/vets?pageNumber=1}">[</a>
+        <span th:unless="${vets.number + 1 > 1}">[</span>
+    </span>
+    <span>
+        <a th:if="${vets.number + 1 > 1}" th:href="@{/vets?pageNumber=__${vets.number}__}">&lt;</a>
+        <span th:unless="${vets.number + 1 > 1}">&lt;</span>
+    </span>
+    <span>
+        <a th:if="${vets.number + 1 < vets.totalPages}" th:href="@{/vets?pageNumber=__${vets.number + 2}__}">&gt;</a>
+        <span th:unless="${vets.number + 1 < vets.totalPages}">&gt;</span>
+    </span>
+    <span>
+        <a th:if="${vets.number + 1 < vets.totalPages}" th:href="@{/vets?pageNumber=__${vets.totalPages}__}">]</a>
+        <span th:unless="${vets.number + 1 < vets.totalPages}">]</span>
+    </span>
+</div>
+</body>
+</html>

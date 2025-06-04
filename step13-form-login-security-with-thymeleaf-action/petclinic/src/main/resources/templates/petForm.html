@@ -1,0 +1,19 @@
+<!doctype html>
+<html th:replace="~{fragments/layout :: layout(~{::body})}">
+<body>
+<h2>Pet</h2>
+<form th:action="${action}" th:object="${pet}" method="post">
+    <label>Owner</label>
+    <div><span th:text="${owner.firstName + ' ' + owner.lastName}"></span></div>
+    <br/>
+    <input th:replace="~{fragments/inputField :: input('Name', 'name', 'text')}" />
+    <input th:replace="~{fragments/inputField :: input('Birth Date', 'birthDate', 'date')}" />
+    <input th:replace="~{fragments/selectField :: select('Type', 'petType', ${types})}" />
+    <br/>
+    <div>
+        <button type="submit" th:if="${#strings.startsWith(action, '/pets/new')}">Add Pet</button>
+        <button type="submit" th:unless="${#strings.startsWith(action, '/pets/new')}">Update Pet</button>
+    </div>
+</form>
+</body>
+</html>

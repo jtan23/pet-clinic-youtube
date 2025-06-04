@@ -1,0 +1,18 @@
+<!doctype html>
+<html th:replace="~{fragments/layout :: layout(~{::body})}">
+<body>
+<h2>Owner</h2>
+<form th:action="${action}" th:object="${owner}" method="post">
+    <input th:replace="~{fragments/inputField :: input('First Name', 'firstName', 'text')}" />
+    <input th:replace="~{fragments/inputField :: input('Last Name', 'lastName', 'text')}" />
+    <input th:replace="~{fragments/inputField :: input('Address', 'address', 'text')}" />
+    <input th:replace="~{fragments/inputField :: input('City', 'city', 'text')}" />
+    <input th:replace="~{fragments/inputField :: input('Telephone', 'telephone', 'text')}" />
+    <br/>
+    <div>
+        <button th:if="${action == '/owners/new'}" type="submit">Add Owner</button>
+        <button th:unless="${action == '/owners/new'}" type="submit">Update Owner</button>
+    </div>
+</form>
+</body>
+</html>

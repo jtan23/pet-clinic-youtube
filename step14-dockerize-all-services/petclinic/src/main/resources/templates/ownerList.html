@@ -1,0 +1,44 @@
+<!doctype html>
+<html th:replace="~{fragments/layout :: layout(~{::body})}">
+<body>
+<h2>Owner List</h2>
+<table>
+    <thead><tr><th>Name</th><th>Address</th><th>City</th><th>Telephone</th><th>Pets</th></tr></thead>
+    <tbody>
+        <tr th:each="owner : ${owners.content}">
+            <td><a th:href="@{/owners/__${owner.id}__}" th:text="${owner.firstName + ' ' + owner.lastName}"></a></td>
+            <td th:text="${owner.address}"></td>
+            <td th:text="${owner.city}"></td>
+            <td th:text="${owner.telephone}"></td>
+            <td th:text="${owner.petNames}"></td>
+        </tr>
+    </tbody>
+</table>
+<div>
+    <span>Pages</span>
+    <span>(</span>
+    <span th:each="i : ${#numbers.sequence(1, owners.totalPages)}">
+        <a th:if="${owners.number + 1 != i}" th:href="@{/owners?pageNumber=__${i}__}" th:text="${i}"></a>
+        <span th:unless="${owners.number + 1 != i}" th:text="${i}"></span>
+    </span>
+    <span>)</span>
+
+    <span>
+        <a th:if="${owners.number + 1 > 1}" th:href="@{/owners?pageNumber=1}">[</a>
+        <span th:unless="${owners.number + 1 > 1}">[</span>
+    </span>
+    <span>
+        <a th:if="${owners.number + 1 > 1}" th:href="@{/owners?pageNumber=__${owners.number}__}">&lt;</a>
+        <span th:unless="${owners.number + 1 > 1}">&lt;</span>
+    </span>
+    <span>
+        <a th:if="${owners.number + 1 < owners.totalPages}" th:href="@{/owners?pageNumber=__${owners.number + 2}__}">&gt;</a>
+        <span th:unless="${owners.number + 1 < owners.totalPages}">&gt;</span>
+    </span>
+    <span>
+        <a th:if="${owners.number + 1 < owners.totalPages}" th:href="@{/owners?pageNumber=__${owners.totalPages}__}">]</a>
+        <span th:unless="${owners.number + 1 < owners.totalPages}">]</span>
+    </span>
+</div>
+</body>
+</html>

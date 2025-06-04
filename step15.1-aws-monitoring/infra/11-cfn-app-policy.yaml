@@ -1,0 +1,44 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Description: The IAM Resources for app project
+
+Resources:
+  AppIamPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - appmesh:StreamAggregatedResources
+            Resource:
+              - arn:aws:appmesh:ap-southeast-2:291148202449:mesh/test-mesh/virtualNode/app-service_test
+              - arn:aws:appmesh:ap-southeast-2:291148202449:mesh/prod-mesh/virtualNode/app-service_prod
+          # AWSXRayDaemonWriteAccess
+          - Effect: Allow
+            Action:
+              - xray:PutTraceSegments
+              - xray:PutTelemetryRecords
+              - xray:GetSamplingRules
+              - xray:GetSamplingTargets
+              - xray:GetSamplingStatisticSummaries
+            Resource: "*"
+          # CloudWatchAgentServerPolicy, used for Fluentd as well
+          - Effect: Allow
+            Action:
+              - cloudwatch:PutMetricData
+              - ec2:DescribeVolumes
+              - ec2:DescribeTags
+              - logs:PutLogEvents
+              - logs:DescribeLogStreams
+              - logs:DescribeLogGroups
+              - logs:CreateLogStream
+              - logs:CreateLogGroup
+            Resource: "*"
+          # CloudWatchAgentServerPolicy
+          - Effect: Allow
+            Action:
+              - ssm:GetParameter
+            Resource: "arn:aws:ssm:*:*:parameter/AmazonCloudWatch-*"
+      ManagedPolicyName: AppPolicy
